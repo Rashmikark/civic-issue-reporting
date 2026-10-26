@@ -7,3 +7,5 @@ civic.db
 instance/
 .pytest_cache/
 staticfiles/
+static/bg.mp4
+static/uploads/
