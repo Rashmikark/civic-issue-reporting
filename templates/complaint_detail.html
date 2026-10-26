@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Complaint #{{ c.id }} — CivicReport</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+    <style>
+        #detail-map { height: 280px; border-radius: 8px; border: 1px solid var(--gray-200); }
+
+        .detail-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 24px;
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--gray-100);
+            font-size: 14px;
+        }
+
+        .info-row:last-child { border-bottom: none; }
+
+        .info-row .info-label {
+            color: var(--gray-400);
+            font-weight: 600;
+            font-size: 13px;
+        }
+
+        .timeline {
+            position: relative;
+            padding-left: 24px;
+        }
+
+        .timeline::before {
+            content: '';
+            position: absolute;
+            left: 7px;
+            top: 8px;
+            bottom: 8px;
+            width: 2px;
+            background: var(--gray-200);
+        }
+
+        .timeline-item {
+            position: relative;
+            margin-bottom: 20px;
+        }
+
+        .timeline-dot {
+            position: absolute;
+            left: -20px;
+            top: 4px;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: var(--primary);
+            border: 2px solid white;
+            box-shadow: 0 0 0 2px var(--primary);
+        }
+
+        .timeline-dot.done  { background: var(--success); box-shadow: 0 0 0 2px var(--success); }
+        .timeline-dot.active { background: var(--primary); box-shadow: 0 0 0 2px var(--primary); }
+        .timeline-dot.pending { background: var(--gray-200); box-shadow: 0 0 0 2px var(--gray-400); }
+
+        .timeline-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--gray-800);
+        }
+
+        .timeline-sub {
+            font-size: 12px;
+            color: var(--gray-400);
+            margin-top: 2px;
+        }
+
+        @media (max-width: 768px) {
+            .detail-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- Video Background -->
+<video autoplay muted loop playsinline
+       style="position:fixed; top:0; left:0; width:100%; height:100%;
+              object-fit:cover; z-index:-1; opacity:0.07;">
+    <source src="{{ url_for('static', filename='bg.mp4') }}" type="video/mp4">
+</video>
+<!-- Topbar -->
+<nav class="topbar" {% if session.get('is_admin') %}style="background:#7b1fa2;"{% endif %}>
+    <div style="display:flex; align-items:center; gap:12px;">
+        <button class="sidebar-toggle" onclick="toggleSidebar()">☰</button>
+        <a href="/" class="brand">
+            <span class="logo-icon">{% if session.get('is_admin') %}🛡️{% else %}🏛️{% endif %}</span>
+            CivicReport {% if session.get('is_admin') %}Admin{% endif %}
+        </a>
+    </div>
+    <div class="topbar-right">
+        <div class="user-info">
+            <div class="user-avatar">{{ session['username'][0].upper() }}</div>
+            <span>{{ session['username'] }}</span>
+        </div>
+        <a href="/logout" class="btn-logout">Logout</a>
+    </div>
+</nav>
+
+<!-- Sidebar -->
+<aside class="sidebar" id="sidebar">
+    <div class="sidebar-section">
+        <div class="sidebar-label">
+            {% if session.get('is_admin') %}Admin Menu{% else %}Main Menu{% endif %}
+        </div>
+        {% if session.get('is_admin') %}
+            <a href="/admin" class="sidebar-link">
+                <span class="icon">📊</span> All Complaints
+            </a>
+        {% else %}
+            <a href="/dashboard" class="sidebar-link">
+                <span class="icon">📊</span> Dashboard
+            </a>
+            <a href="/submit" class="sidebar-link">
+                <span class="icon">📝</span> Report Issue
+            </a>
+        {% endif %}
+    </div>
+    <div class="sidebar-divider"></div>
+    <div class="sidebar-section">
+        <div class="sidebar-label">Account</div>
+        <a href="/logout" class="sidebar-link">
+            <span class="icon">🚪</span> Logout
+        </a>
+    </div>
+</aside>
+
+<!-- Main Content -->
+<main class="main-content">
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, message in messages %}
+            <div class="alert alert-{{ category }}">{{ message }}</div>
+        {% endfor %}
+    {% endwith %}
+
+    <!-- Back Button + Header -->
+    <div style="display:flex; align-items:center; gap:14px; margin-bottom:24px;">
+        <a href="{{ '/admin' if session.get('is_admin') else '/dashboard' }}"
+           class="btn btn-secondary btn-sm">
+            ← Back
+        </a>
+        <div>
+            <h1 style="font-size:22px; font-weight:700; margin:0;">
+                Complaint #{{ c.id }}
+            </h1>
+            <p style="color:var(--gray-400); font-size:13px; margin:2px 0 0;">
+                Submitted on {{ c.created_at[:10] }}
+            </p>
+        </div>
+    </div>
+
+    <div class="detail-grid">
+
+        <!-- LEFT COLUMN -->
+        <div>
+
+            <!-- Complaint Text Card -->
+            <div class="card">
+                <div class="card-header">
+                    <h3>📋 Complaint Details</h3>
+                    <div style="display:flex; gap:8px;">
+                        <span class="badge badge-{{ c.priority|lower }}">
+                            {{ c.priority }} Priority
+                        </span>
+                        <span class="badge badge-{{ c.status|lower|replace(' ','-') }}">
+                            {{ c.status }}
+                        </span>
+                    </div>
+                </div>
+                <p style="font-size:15px; line-height:1.8; color:var(--gray-800);
+                           background:var(--gray-50); padding:16px;
+                           border-radius:8px; border-left:4px solid var(--primary);">
+                    {{ c.complaint_text }}
+                </p>
+
+                {% if c.is_duplicate %}
+                <div class="alert alert-warning" style="margin-top:16px; margin-bottom:0;">
+                    ⚠️ This complaint has been flagged as a <strong>duplicate</strong>
+                    of an existing complaint.
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- AI Analysis Card -->
+            <div class="card">
+                <div class="card-header">
+                    <h3>🤖 AI Analysis Results</h3>
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px;">
+                    <div style="text-align:center; padding:16px;
+                                background:var(--gray-50); border-radius:8px;">
+                        <div style="font-size:28px; margin-bottom:8px;">📂</div>
+                        <div style="font-size:11px; color:var(--gray-400);
+                                    font-weight:600; text-transform:uppercase;
+                                    margin-bottom:6px;">Category</div>
+                        <span class="badge badge-general"
+                              style="font-size:14px; padding:5px 14px;">
+                            {{ c.category }}
+                        </span>
+                    </div>
+                    <div style="text-align:center; padding:16px;
+                                background:var(--gray-50); border-radius:8px;">
+                        <div style="font-size:28px; margin-bottom:8px;">⚡</div>
+                        <div style="font-size:11px; color:var(--gray-400);
+                                    font-weight:600; text-transform:uppercase;
+                                    margin-bottom:6px;">Priority</div>
+                        <span class="badge badge-{{ c.priority|lower }}"
+                              style="font-size:14px; padding:5px 14px;">
+                            {{ c.priority }}
+                        </span>
+                    </div>
+                    <div style="text-align:center; padding:16px;
+                                background:var(--gray-50); border-radius:8px;">
+                        <div style="font-size:28px; margin-bottom:8px;">🔁</div>
+                        <div style="font-size:11px; color:var(--gray-400);
+                                    font-weight:600; text-transform:uppercase;
+                                    margin-bottom:6px;">Duplicate</div>
+                        {% if c.is_duplicate %}
+                            <span class="badge badge-duplicate"
+                                  style="font-size:14px; padding:5px 14px;">
+                                Yes
+                            </span>
+                        {% else %}
+                            <span class="badge badge-low"
+                                  style="font-size:14px; padding:5px 14px;">
+                                No
+                            </span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Image Card -->
+            {% if c.image_path %}
+            <div class="card">
+                <div class="card-header">
+                    <h3>🖼️ Uploaded Image</h3>
+                </div>
+                <img src="{{ url_for('static', filename='uploads/' + c.image_path) }}"
+                     alt="Complaint Image"
+                     style="width:100%; border-radius:8px;
+                            border:1px solid var(--gray-200);
+                            max-height:400px; object-fit:cover;">
+            </div>
+            {% endif %}
+
+            <!-- Map Card -->
+            {% if c.location %}
+            <div class="card">
+                <div class="card-header">
+                    <h3>🗺️ Complaint Location</h3>
+                    <span style="font-size:12px; color:var(--gray-400);">
+                        {{ c.location }}
+                    </span>
+                </div>
+                <div id="detail-map"></div>
+            </div>
+            {% endif %}
+
+        </div>
+
+        <!-- RIGHT COLUMN -->
+        <div>
+
+            <!-- Info Card -->
+            <div class="card">
+                <div class="card-header">
+                    <h3>ℹ️ Information</h3>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Complaint ID</span>
+                    <strong>#{{ c.id }}</strong>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Submitted By</span>
+                    <span>{{ c.first_name or c.username }}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Username</span>
+                    <span>@{{ c.username }}</span>
+                </div>
+                {% if session.get('is_admin') %}
+                <div class="info-row">
+                    <span class="info-label">Email</span>
+                    <span style="font-size:13px;">{{ c.email }}</span>
+                </div>
+                {% endif %}
+                <div class="info-row">
+                    <span class="info-label">Date</span>
+                    <span>{{ c.created_at[:10] }}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Time</span>
+                    <span>{{ c.created_at[11:16] }}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Category</span>
+                    <span class="badge badge-general">{{ c.category }}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Priority</span>
+                    <span class="badge badge-{{ c.priority|lower }}">
+                        {{ c.priority }}
+                    </span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Status</span>
+                    <span class="badge badge-{{ c.status|lower|replace(' ','-') }}">
+                        {{ c.status }}
+                    </span>
+                </div>
+            </div>
+
+            <!-- Status Timeline Card -->
+            <div class="card">
+                <div class="card-header">
+                    <h3>📅 Status Timeline</h3>
+                </div>
+                <div class="timeline">
+
+                    <div class="timeline-item">
+                        <div class="timeline-dot done"></div>
+                        <div class="timeline-title">✅ Submitted</div>
+                        <div class="timeline-sub">
+                            {{ c.created_at[:10] }} — Complaint received
+                        </div>
+                    </div>
+
+                    <div class="timeline-item">
+                        <div class="timeline-dot
+                            {% if c.status in ['In Progress','Resolved'] %}done
+                            {% elif c.status == 'Pending' %}active
+                            {% else %}pending{% endif %}">
+                        </div>
+                        <div class="timeline-title">
+                            {% if c.status == 'Pending' %}
+                                🕐 Pending Review
+                            {% elif c.status in ['In Progress','Resolved'] %}
+                                ✅ Under Review
+                            {% else %}
+                                ⏸️ On Hold
+                            {% endif %}
+                        </div>
+                        <div class="timeline-sub">
+                            {% if c.status == 'Pending' %}
+                                Awaiting admin review
+                            {% else %}
+                                Admin has reviewed
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="timeline-item">
+                        <div class="timeline-dot
+                            {% if c.status == 'Resolved' %}done
+                            {% elif c.status == 'In Progress' %}active
+                            {% else %}pending{% endif %}">
+                        </div>
+                        <div class="timeline-title">
+                            {% if c.status == 'In Progress' %}
+                                ⚙️ In Progress
+                            {% elif c.status == 'Resolved' %}
+                                ✅ Work Completed
+                            {% else %}
+                                ⚙️ In Progress
+                            {% endif %}
+                        </div>
+                        <div class="timeline-sub">
+                            {% if c.status == 'In Progress' %}
+                                Currently being worked on
+                            {% elif c.status == 'Resolved' %}
+                                Issue was fixed
+                            {% else %}
+                                Not started yet
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="timeline-item">
+                        <div class="timeline-dot
+                            {% if c.status == 'Resolved' %}done{% else %}pending{% endif %}">
+                        </div>
+                        <div class="timeline-title">
+                            {% if c.status == 'Resolved' %}
+                                🎉 Resolved
+                            {% else %}
+                                🎯 Resolved
+                            {% endif %}
+                        </div>
+                        <div class="timeline-sub">
+                            {% if c.status == 'Resolved' %}
+                                Complaint successfully resolved!
+                            {% else %}
+                                Pending resolution
+                            {% endif %}
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- Admin Update Status (admin only) -->
+            {% if session.get('is_admin') %}
+            <div class="card">
+                <div class="card-header">
+                    <h3>🔧 Update Status</h3>
+                </div>
+                <form method="POST" action="/update-status/{{ c.id }}">
+                    <div class="form-group">
+                        <label>Change Status</label>
+                        <select name="status">
+                            <option {% if c.status=='Pending' %}selected{% endif %}>Pending</option>
+                            <option {% if c.status=='In Progress' %}selected{% endif %}>In Progress</option>
+                            <option {% if c.status=='Resolved' %}selected{% endif %}>Resolved</option>
+                            <option {% if c.status=='Rejected' %}selected{% endif %}>Rejected</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary"
+                            style="width:100%; justify-content:center;">
+                        💾 Save Status
+                    </button>
+                </form>
+            </div>
+            {% endif %}
+
+        </div>
+    </div>
+
+</main>
+
+<script>
+function toggleSidebar() {
+    document.getElementById('sidebar').classList.toggle('open');
+}
+
+// ── Mini Map ──────────────────────────────────────────────────────
+{% if c.location %}
+try {
+    const parts = "{{ c.location }}".split(',');
+    if (parts.length === 2) {
+        const lat = parseFloat(parts[0]);
+        const lng = parseFloat(parts[1]);
+        const map = L.map('detail-map').setView([lat, lng], 15);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap'
+        }).addTo(map);
+
+        const colors = { High:'#ef4444', Medium:'#f59e0b', Low:'#10b981' };
+        const color  = colors["{{ c.priority }}"] || '#2e7d32';
+
+        L.circleMarker([lat, lng], {
+            radius:14, fillColor:color,
+            color:'#fff', weight:3, fillOpacity:0.9
+        }).addTo(map)
+        .bindPopup(`<strong>#{{ c.id }} — {{ c.category }}</strong><br>
+                    {{ c.priority }} Priority | {{ c.status }}`)
+        .openPopup();
+    }
+} catch(e) {}
+{% endif %}
+</script>
+
+</body>
+</html>

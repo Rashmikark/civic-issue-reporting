@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>My Profile — CivicReport</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        .avatar-big {
+            width        : 88px;
+            height       : 88px;
+            border-radius: 50%;
+            background   : linear-gradient(135deg, var(--primary), var(--primary-light));
+            display      : flex;
+            align-items  : center;
+            justify-content: center;
+            font-size    : 36px;
+            font-weight  : 700;
+            color        : white;
+            margin       : 0 auto 16px;
+            box-shadow   : 0 4px 16px rgba(46,125,50,0.3);
+        }
+        .profile-header {
+            text-align   : center;
+            padding      : 28px;
+            background   : linear-gradient(135deg, var(--primary-bg), white);
+            border-radius: var(--radius);
+            margin-bottom: 24px;
+            border       : 1px solid var(--gray-200);
+        }
+        .section-title {
+            font-size    : 12px;
+            font-weight  : 600;
+            color        : var(--primary);
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            margin-bottom : 16px;
+            padding-bottom: 8px;
+            border-bottom : 2px solid var(--primary-bg);
+        }
+        .name-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+        @media (max-width: 600px) {
+            .name-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- Video Background -->
+<video autoplay muted loop playsinline
+       style="position:fixed; top:0; left:0; width:100%; height:100%;
+              object-fit:cover; z-index:-1; opacity:0.07;">
+    <source src="{{ url_for('static', filename='bg.mp4') }}" type="video/mp4">
+</video>
+
+<nav class="topbar">
+    <div style="display:flex; align-items:center; gap:12px;">
+        <button class="sidebar-toggle" onclick="toggleSidebar()">☰</button>
+        <a href="/" class="brand">
+            <span class="logo-icon">🏛️</span> CivicReport
+        </a>
+    </div>
+    <div class="topbar-right">
+        <div class="user-info">
+            <div class="user-avatar">{{ session['username'][0].upper() }}</div>
+            <span>{{ session['username'] }}</span>
+        </div>
+        <a href="/logout" class="btn-logout">Logout</a>
+    </div>
+</nav>
+
+<aside class="sidebar" id="sidebar">
+    <div class="sidebar-section">
+        <div class="sidebar-label">Main Menu</div>
+        <a href="/dashboard" class="sidebar-link">
+            <span class="icon">📊</span> Dashboard
+        </a>
+        <a href="/submit" class="sidebar-link">
+            <span class="icon">📝</span> Report Issue
+        </a>
+        <a href="/profile" class="sidebar-link active">
+            <span class="icon">👤</span> My Profile
+        </a>
+    </div>
+    <div class="sidebar-divider"></div>
+    <div class="sidebar-section">
+        <div class="sidebar-label">Account</div>
+        <a href="/logout" class="sidebar-link">
+            <span class="icon">🚪</span> Logout
+        </a>
+    </div>
+</aside>
+
+<main class="main-content">
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, message in messages %}
+            <div class="alert alert-{{ category }}">{{ message }}</div>
+        {% endfor %}
+    {% endwith %}
+
+    <div class="page-header">
+        <h1>👤 My Profile</h1>
+        <p>Manage your personal information and account settings.</p>
+    </div>
+
+    <!-- Profile Header Card -->
+    <div class="profile-header">
+        <div class="avatar-big">
+            {{ user.username[0].upper() }}
+        </div>
+        <h2 style="font-size:22px; font-weight:700; margin-bottom:4px;">
+            {{ user.first_name or '' }} {{ user.last_name or '' }}
+            {% if not user.first_name %}{{ user.username }}{% endif %}
+        </h2>
+        <p style="color:var(--gray-400); font-size:14px;">
+            @{{ user.username }} &nbsp;·&nbsp; {{ user.email }}
+        </p>
+        <p style="color:var(--gray-400); font-size:13px; margin-top:6px;">
+            📅 Member since {{ user.created_at[:10] }}
+        </p>
+    </div>
+
+    <div style="display:grid; grid-template-columns:2fr 1fr; gap:24px;">
+
+        <!-- Edit Form -->
+        <div class="card">
+            <form method="POST" action="/profile">
+
+                <div class="section-title">👤 Personal Information</div>
+
+                <div class="name-grid">
+                    <div class="form-group">
+                        <label>First Name</label>
+                        <div class="input-icon-wrap">
+                            <span class="icon">✏️</span>
+                            <input type="text" name="first_name"
+                                   value="{{ user.first_name or '' }}"
+                                   placeholder="First name">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Last Name</label>
+                        <div class="input-icon-wrap">
+                            <span class="icon">✏️</span>
+                            <input type="text" name="last_name"
+                                   value="{{ user.last_name or '' }}"
+                                   placeholder="Last name">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="name-grid">
+                    <div class="form-group">
+                        <label>Date of Birth</label>
+                        <div class="input-icon-wrap">
+                            <span class="icon">🎂</span>
+                            <input type="date" name="dob"
+                                   value="{{ user.dob or '' }}">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Phone Number</label>
+                        <div class="input-icon-wrap">
+                            <span class="icon">📱</span>
+                            <input type="tel" name="phone"
+                                   value="{{ user.phone or '' }}"
+                                   placeholder="Phone number"
+                                   maxlength="10">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="section-title" style="margin-top:8px;">
+                    🔐 Account Details
+                </div>
+
+                <div class="form-group">
+                    <label>Email Address</label>
+                    <div class="input-icon-wrap">
+                        <span class="icon">📧</span>
+                        <input type="email" name="email"
+                               value="{{ user.email }}" required>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Username</label>
+                    <div class="input-icon-wrap">
+                        <span class="icon">👤</span>
+                        <input type="text" value="{{ user.username }}"
+                               disabled
+                               style="background:var(--gray-50);
+                                      color:var(--gray-400); cursor:not-allowed;">
+                    </div>
+                    <p class="form-hint">Username cannot be changed.</p>
+                </div>
+
+                <div class="section-title" style="margin-top:8px;">
+                    🔒 Change Password
+                    <span style="font-weight:400; color:var(--gray-400);
+                                 text-transform:none; letter-spacing:0;
+                                 font-size:12px;">
+                        (leave blank to keep current)
+                    </span>
+                </div>
+
+                <div class="form-group">
+                    <label>New Password</label>
+                    <div class="input-icon-wrap">
+                        <span class="icon">🔒</span>
+                        <input type="password" name="new_password"
+                               id="new-password"
+                               placeholder="Enter new password (optional)">
+                    </div>
+                    <div id="profile-strength" style="margin-top:6px;"></div>
+                </div>
+
+                <div class="form-group">
+                    <label>Confirm New Password</label>
+                    <div class="input-icon-wrap">
+                        <span class="icon">🔒</span>
+                        <input type="password" name="confirm_new_password"
+                               id="confirm-new-password"
+                               placeholder="Re-enter new password">
+                    </div>
+                    <div id="profile-match"
+                         style="font-size:12px; margin-top:5px; font-weight:600;">
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-primary"
+                        style="width:100%; justify-content:center; padding:12px;">
+                    💾 Save Changes
+                </button>
+
+            </form>
+        </div>
+
+        <!-- Right Column Info -->
+        <div>
+            <div class="card">
+                <div class="card-header"><h3>📊 Quick Stats</h3></div>
+                <div style="text-align:center; padding:16px 0;">
+                    <div style="font-size:36px; font-weight:700;
+                                color:var(--primary);">
+                        {{ user.username[0].upper() }}
+                    </div>
+                    <p style="color:var(--gray-400); font-size:13px; margin-top:4px;">
+                        Verified Member
+                    </p>
+                </div>
+                <div class="info-row" style="display:flex; justify-content:space-between;
+                     padding:10px 0; border-bottom:1px solid var(--gray-100);
+                     font-size:13px;">
+                    <span style="color:var(--gray-400);">Username</span>
+                    <strong>@{{ user.username }}</strong>
+                </div>
+                <div class="info-row" style="display:flex; justify-content:space-between;
+                     padding:10px 0; font-size:13px;">
+                    <span style="color:var(--gray-400);">Member Since</span>
+                    <strong>{{ user.created_at[:10] }}</strong>
+                </div>
+            </div>
+
+            <div class="card"
+                 style="background:var(--primary-bg);
+                        border-color:var(--primary-light);">
+                <h4 style="color:var(--primary); margin-bottom:12px;">
+                    🔒 Password Tips
+                </h4>
+                <ul style="font-size:13px; color:var(--gray-600);
+                           line-height:2; padding-left:16px;">
+                    <li>Min 8 characters</li>
+                    <li>Use uppercase + lowercase</li>
+                    <li>Add numbers (0-9)</li>
+                    <li>Add special characters</li>
+                    <li>Never share your password</li>
+                </ul>
+            </div>
+        </div>
+
+    </div>
+</main>
+
+<script>
+function toggleSidebar() {
+    document.getElementById('sidebar').classList.toggle('open');
+}
+
+// Password strength on profile page
+const newPass    = document.getElementById('new-password');
+const confirmNew = document.getElementById('confirm-new-password');
+const strengthD  = document.getElementById('profile-strength');
+const matchD     = document.getElementById('profile-match');
+
+newPass.addEventListener('input', function() {
+    const val = this.value;
+    if (!val) { strengthD.innerHTML = ''; return; }
+    const checks = {
+        length   : val.length >= 8,
+        uppercase: /[A-Z]/.test(val),
+        lowercase: /[a-z]/.test(val),
+        number   : /[0-9]/.test(val),
+        special  : /[^A-Za-z0-9]/.test(val)
+    };
+    const passed = Object.values(checks).filter(Boolean).length;
+    let label = '', color = '';
+    if      (passed <= 2) { label = 'Weak';   color = '#ef4444'; }
+    else if (passed <= 3) { label = 'Medium'; color = '#f59e0b'; }
+    else if (passed === 4){ label = 'Good';   color = '#3b82f6'; }
+    else                  { label = 'Strong'; color = '#10b981'; }
+
+    strengthD.innerHTML = `
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+            <div style="flex:1; height:5px; background:var(--gray-200);
+                        border-radius:4px; overflow:hidden;">
+                <div style="height:100%; width:${passed*20}%;
+                            background:${color}; border-radius:4px;
+                            transition:all 0.3s;"></div>
+            </div>
+            <span style="font-size:12px; font-weight:700; color:${color};">${label}</span>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:3px; font-size:12px;">
+            <span style="color:${checks.length    ?'#10b981':'#ef4444'}">${checks.length    ?'✅':'❌'} Min 8 chars</span>
+            <span style="color:${checks.uppercase ?'#10b981':'#ef4444'}">${checks.uppercase ?'✅':'❌'} Uppercase</span>
+            <span style="color:${checks.lowercase ?'#10b981':'#ef4444'}">${checks.lowercase ?'✅':'❌'} Lowercase</span>
+            <span style="color:${checks.number    ?'#10b981':'#ef4444'}">${checks.number    ?'✅':'❌'} Number</span>
+            <span style="color:${checks.special   ?'#10b981':'#ef4444'}">${checks.special   ?'✅':'❌'} Special char</span>
+        </div>
+    `;
+});
+
+confirmNew.addEventListener('input', function() {
+    if (!this.value) { matchD.textContent = ''; return; }
+    if (this.value === newPass.value) {
+        matchD.textContent = '✅ Passwords match';
+        matchD.style.color = '#166534';
+    } else {
+        matchD.textContent = '❌ Passwords do not match';
+        matchD.style.color = '#991b1b';
+    }
+});
+</script>
+
+</body>
+</html>

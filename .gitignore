@@ -1,0 +1,9 @@
+venv/
+__pycache__/
+*.pyc
+civic.db
+.env
+*.sqlite3
+instance/
+.pytest_cache/
+staticfiles/

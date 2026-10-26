@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Admin Panel — CivicReport</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+    <style> #admin-map { height:380px; border-radius:8px; } </style>
+</head>
+<body>
+
+<!-- Video Background -->
+<video autoplay muted loop playsinline
+       style="position:fixed; top:0; left:0; width:100%; height:100%;
+              object-fit:cover; z-index:-1; opacity:0.07;">
+    <source src="{{ url_for('static', filename='bg.mp4') }}" type="video/mp4">
+</video>
+
+<nav class="topbar" style="background:#7b1fa2;">
+    <div style="display:flex; align-items:center; gap:12px;">
+        <button class="sidebar-toggle" onclick="toggleSidebar()">☰</button>
+        <a href="/" class="brand">
+            <span class="logo-icon">🛡️</span> CivicReport Admin
+        </a>
+    </div>
+    <div class="topbar-right">
+        <div class="user-info">
+            <div class="user-avatar">A</div>
+            <span>Admin</span>
+        </div>
+        <a href="/logout" class="btn-logout">Logout</a>
+    </div>
+</nav>
+
+<aside class="sidebar" id="sidebar"
+       style="border-right-color:#f3e5f5;">
+    <div class="sidebar-section">
+        <div class="sidebar-label">Admin Menu</div>
+        <a href="/admin" class="sidebar-link active">
+            <span class="icon">📊</span> All Complaints
+        </a>
+    </div>
+    <div class="sidebar-divider"></div>
+    <div class="sidebar-section">
+        <div class="sidebar-label">Account</div>
+        <a href="/logout" class="sidebar-link">
+            <span class="icon">🚪</span> Logout
+        </a>
+    </div>
+</aside>
+
+<main class="main-content">
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, message in messages %}
+            <div class="alert alert-{{ category }}">{{ message }}</div>
+        {% endfor %}
+    {% endwith %}
+
+    <div class="page-header">
+        <h1>🛡️ Admin Panel</h1>
+        <p>Manage all complaints — High priority shown first.</p>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-icon green">📋</div>
+            <div class="stat-info">
+                <div class="number">{{ complaints|length }}</div>
+                <div class="label">Total Complaints</div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon red">🔴</div>
+            <div class="stat-info">
+                <div class="number">
+                    {{ complaints|selectattr('priority','equalto','High')|list|length }}
+                </div>
+                <div class="label">High Priority</div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon yellow">⚠️</div>
+            <div class="stat-info">
+                <div class="number">
+                    {{ complaints|selectattr('is_duplicate','equalto',1)|list|length }}
+                </div>
+                <div class="label">Duplicates</div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon green">✅</div>
+            <div class="stat-info">
+                <div class="number">
+                    {{ complaints|selectattr('status','equalto','Resolved')|list|length }}
+                </div>
+                <div class="label">Resolved</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Map -->
+    <div class="card">
+        <div class="card-header">
+            <h3>🗺️ All Complaint Locations</h3>
+            <div style="font-size:12px; color:var(--gray-400);">
+                🔴 High &nbsp; 🟡 Medium &nbsp; 🟢 Low
+            </div>
+        </div>
+        <div id="admin-map"></div>
+    </div>
+
+    <!-- Table -->
+    <div class="card">
+        <div class="card-header">
+            <h3>📋 All Complaints</h3>
+            <span style="font-size:13px; color:var(--gray-400);">
+                Sorted by priority
+            </span>
+        </div>
+
+        {% if complaints %}
+        <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>User</th>
+                    <th>Complaint</th>
+                    <th>Category</th>
+                    <th>Priority</th>
+                    <th>Status</th>
+                    <th>Dup</th>
+                    <th>Update</th>
+                    <th>Detail</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in complaints %}
+                <tr>
+                    <td><strong>#{{ c.id }}</strong></td>
+                    <td>{{ c.username }}</td>
+                    <td style="max-width:220px; font-size:13px;">
+                        {{ c.complaint_text[:55] }}
+                        {% if c.complaint_text|length > 55 %}...{% endif %}
+                    </td>
+                    <td>
+                        <span class="badge badge-general">
+                            {{ c.category }}
+                        </span>
+                    </td>
+                    <td>
+                        <span class="badge badge-{{ c.priority|lower }}">
+                            {{ c.priority }}
+                        </span>
+                    </td>
+                    <td>
+                        <span class="badge
+                            badge-{{ c.status|lower|replace(' ','-') }}">
+                            {{ c.status }}
+                        </span>
+                    </td>
+                    <td>
+                        {% if c.is_duplicate %}
+                            <span class="badge badge-duplicate">Yes</span>
+                        {% else %}
+                            <span class="badge badge-low">No</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <form method="POST"
+                              action="/update-status/{{ c.id }}"
+                              style="display:flex; gap:6px;">
+                            <select name="status"
+                                    style="padding:5px 8px; border-radius:6px;
+                                           border:1.5px solid var(--gray-200);
+                                           font-size:13px; outline:none;">
+                                <option {% if c.status=='Pending' %}selected{% endif %}>Pending</option>
+                                <option {% if c.status=='In Progress' %}selected{% endif %}>In Progress</option>
+                                <option {% if c.status=='Resolved' %}selected{% endif %}>Resolved</option>
+                                <option {% if c.status=='Rejected' %}selected{% endif %}>Rejected</option>
+                            </select>
+                            <button type="submit"
+                                    class="btn btn-primary btn-sm">
+                                Save
+                            </button>
+                        </form>
+                    </td>
+                    <td>
+                        <a href="/complaint/{{ c.id }}"
+                           class="btn btn-outline btn-sm">
+                            View →
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        {% else %}
+        <div style="text-align:center; padding:48px; color:var(--gray-400);">
+            <div style="font-size:48px; margin-bottom:14px;">📭</div>
+            <p>No complaints submitted yet.</p>
+        </div>
+        {% endif %}
+    </div>
+
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+function toggleSidebar() {
+    document.getElementById('sidebar').classList.toggle('open');
+}
+
+const adminMap = L.map('admin-map').setView([20.5937, 78.9629], 5);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap'
+}).addTo(adminMap);
+
+fetch('/api/map-data')
+.then(r => r.json())
+.then(points => {
+    const colors = { High:'#ef4444', Medium:'#f59e0b', Low:'#10b981' };
+    const bounds = [];
+    points.forEach(p => {
+        const color = colors[p.priority] || '#2e7d32';
+        L.circleMarker([p.lat, p.lng], {
+            radius:10, fillColor:color,
+            color:'#fff', weight:2, fillOpacity:0.9
+        }).addTo(adminMap)
+        .bindPopup(`<strong>#${p.id} — ${p.category}</strong><br>
+                    ${p.text}<br>
+                    <span style="color:${color}">● ${p.priority}</span>
+                    | ${p.status}`);
+        bounds.push([p.lat, p.lng]);
+    });
+    if (bounds.length) adminMap.fitBounds(bounds, {padding:[30,30]});
+});
+</script>
+
+</body>
+</html>
